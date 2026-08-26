@@ -15,14 +15,22 @@ use crate::release::{self, Repo, Version, OLDEST_PUBLISHED};
 use crate::ui::Ui;
 use crate::{archive, checksums, install, verify};
 
+/// Everything a command needs: where to install, what to talk to, and how
+/// loudly to say so.
 pub struct Session {
+    /// Directory the `accent` binary is placed in.
     pub dir: PathBuf,
+    /// Where progress and warnings go.
     pub ui: Ui,
+    /// Repository releases are downloaded from.
     pub repo: Repo,
+    /// HTTP client shared by every step.
     pub http: Http,
 }
 
 impl Session {
+    /// Builds a session, falling back to the platform's default install
+    /// directory when none was given.
     pub fn new(dir: Option<PathBuf>, quiet: bool) -> Result<Self> {
         let dir = match dir {
             Some(dir) => dir,
@@ -37,6 +45,11 @@ impl Session {
     }
 }
 
+/// Downloads, verifies and installs a release.
+///
+/// With no `version`, the latest one. Without `force`, an existing
+/// installation of the same version is a no-op and of any other version an
+/// error. With `dry_run`, everything runs but nothing is written.
 pub fn install(session: &Session, version: Option<&str>, force: bool, dry_run: bool) -> Result<()> {
     let ui = &session.ui;
     ui.say("Accent CMS Installer");
@@ -58,6 +71,8 @@ pub fn install(session: &Session, version: Option<&str>, force: bool, dry_run: b
     fetch_and_place(session, &platform, &target, dry_run)
 }
 
+/// Installs the latest release over an existing installation, or reports
+/// that it is already current.
 pub fn update(session: &Session, force: bool) -> Result<()> {
     let ui = &session.ui;
     let platform = platform::detect()?;
@@ -82,6 +97,8 @@ pub fn update(session: &Session, force: bool) -> Result<()> {
     fetch_and_place(session, &platform, &latest, false)
 }
 
+/// Removes the installed binary, and with `purge` the product's user-level
+/// state as well.
 pub fn uninstall(session: &Session, purge: bool) -> Result<()> {
     let ui = &session.ui;
     let binary = install::binary_in(&session.dir);
@@ -109,6 +126,7 @@ pub fn uninstall(session: &Session, purge: bool) -> Result<()> {
     Ok(())
 }
 
+/// Prints the path and version of the installed binary on stdout.
 pub fn which(session: &Session) -> Result<()> {
     let binary = install::binary_in(&session.dir);
     if !binary.exists() {

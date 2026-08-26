@@ -22,6 +22,8 @@ pub const OLDEST_PUBLISHED: &str = "v0.22.0";
 pub struct Version(String);
 
 impl Version {
+    /// Accepts `0.25.0` and `v0.25.0` alike; rejects anything that is not
+    /// a plausible tag.
     pub fn parse(raw: &str) -> Result<Self> {
         let bare = raw.trim().trim_start_matches('v');
         if bare.is_empty() {
@@ -56,6 +58,7 @@ impl fmt::Display for Version {
 pub struct Repo(String);
 
 impl Repo {
+    /// Reads `ACCENT_REPO`, falling back to [`DEFAULT_REPO`].
     pub fn from_env() -> Self {
         match std::env::var("ACCENT_REPO") {
             Ok(slug) if !slug.trim().is_empty() => Self(slug.trim().to_string()),
@@ -63,18 +66,22 @@ impl Repo {
         }
     }
 
+    /// The `owner/name` this downloads from.
     pub fn slug(&self) -> &str {
         &self.0
     }
 
+    /// Human-facing releases page, for error messages.
     pub fn releases_page(&self) -> String {
         format!("https://github.com/{}/releases", self.0)
     }
 
+    /// The URL that redirects to the newest release.
     pub fn latest_release_url(&self) -> String {
         format!("https://github.com/{}/releases/latest", self.0)
     }
 
+    /// Download URL for one asset of one release.
     pub fn download_url(&self, version: &Version, asset: &str) -> String {
         format!(
             "https://github.com/{}/releases/download/{}/{asset}",
@@ -83,15 +90,18 @@ impl Repo {
         )
     }
 
+    /// Download URL of the checksums file.
     pub fn checksums_url(&self, version: &Version) -> String {
         self.download_url(version, &checksums_name(version))
     }
 
+    /// Download URL of the detached signature over the checksums file.
     pub fn signature_url(&self, version: &Version) -> String {
         self.download_url(version, &format!("{}.asc", checksums_name(version)))
     }
 }
 
+/// Asset name of the checksums file, e.g. `checksums-v0.25.0.txt`.
 pub fn checksums_name(version: &Version) -> String {
     format!("checksums-{}.txt", version.tag())
 }

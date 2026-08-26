@@ -6,11 +6,13 @@
 
 use std::io::IsTerminal;
 
+/// Where progress and warnings go.
 pub struct Ui {
     quiet: bool,
 }
 
 impl Ui {
+    /// `quiet` silences progress, never warnings.
     pub fn new(quiet: bool) -> Self {
         Self { quiet }
     }
@@ -22,6 +24,7 @@ impl Ui {
         }
     }
 
+    /// A blank line, to separate sections of output.
     pub fn blank(&self) {
         if !self.quiet {
             eprintln!();

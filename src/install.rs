@@ -182,6 +182,7 @@ pub fn check_shadowing(dir: &Path, ui: &Ui) {
     }
 }
 
+/// Whether `dir` is one of the entries in `PATH`.
 pub fn on_path(dir: &Path) -> bool {
     std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).any(|entry| entry == dir))

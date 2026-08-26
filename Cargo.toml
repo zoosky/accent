@@ -2,10 +2,11 @@
 name = "accent"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.85"
+# Floor set by the `pgp` (and, on Windows, `zip`) dependencies.
+rust-version = "1.88"
 description = "Installer and updater for Accent CMS — downloads, verifies and installs signed Accent releases"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/AccentCMS/accent"
+repository = "https://github.com/zoosky/accent"
 homepage = "https://accentcms.dev"
 documentation = "https://docs.rs/accent"
 readme = "README.md"

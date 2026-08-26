@@ -8,16 +8,21 @@ use anyhow::{bail, Context, Result};
 /// File name of the installed product (not of this installer).
 #[cfg(windows)]
 pub const BIN_NAME: &str = "accent.exe";
+/// File name of the installed product (not of this installer).
 #[cfg(not(windows))]
 pub const BIN_NAME: &str = "accent";
 
+/// How a release archive for a target is packed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveKind {
+    /// Linux and macOS releases.
     TarGz,
+    /// Windows releases.
     Zip,
 }
 
 impl ArchiveKind {
+    /// The extension used in asset names, without the leading dot.
     pub fn extension(self) -> &'static str {
         match self {
             ArchiveKind::TarGz => "tar.gz",
@@ -26,13 +31,16 @@ impl ArchiveKind {
     }
 }
 
+/// The release build that belongs to this host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Platform {
     /// Rust target triple, as it appears in the release asset names.
     pub target: &'static str,
+    /// How that target's archive is packed.
     pub archive: ArchiveKind,
     /// Human-readable OS name, for the "Detected platform" line.
     pub os: &'static str,
+    /// Human-readable architecture, for the same line.
     pub arch: &'static str,
 }
 
@@ -43,6 +51,7 @@ impl Platform {
     }
 }
 
+/// The release target for the machine this is running on.
 pub fn detect() -> Result<Platform> {
     for_host(std::env::consts::OS, std::env::consts::ARCH)
 }

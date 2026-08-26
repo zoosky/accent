@@ -26,7 +26,9 @@ use clap::{Parser, Subcommand};
         ACCENT_INSTALL_DIR   Where the binary goes (same as --dir)\n  \
         ACCENT_REPO          Repository to download from (default AccentCMS/accent)"
 )]
+/// Everything `accentup` accepts on the command line.
 pub struct Cli {
+    /// The subcommand, defaulting to `install` when absent.
     #[command(subcommand)]
     pub command: Option<Command>,
 
@@ -40,6 +42,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+/// The subcommands.
 pub enum Command {
     /// Download and install Accent CMS. The default when no command is given.
     Install {

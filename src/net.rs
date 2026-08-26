@@ -20,6 +20,7 @@ const MAX_ARTIFACT_BYTES: u64 = 256 * 1024 * 1024;
 /// Ceiling on the metadata fetches (checksums, signature), which are ~1 KB.
 const MAX_TEXT_BYTES: u64 = 1024 * 1024;
 
+/// The HTTP client, configured once per run.
 pub struct Http {
     agent: ureq::Agent,
     /// Same configuration with redirects switched off, for reading the
@@ -34,6 +35,7 @@ impl Default for Http {
 }
 
 impl Http {
+    /// Builds the client, with timeouts suited to a large download.
     pub fn new() -> Self {
         let base = || {
             ureq::Agent::config_builder()

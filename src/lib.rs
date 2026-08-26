@@ -18,13 +18,29 @@
 //!
 //! [Accent CMS]: https://accentcms.dev
 
+//! This library exists so the installer's parts can be tested in isolation.
+//! It is an implementation detail of the `accentup` binary, and its API is
+//! not stable across releases.
+
+#![warn(missing_docs)]
+
+/// Unpacking release archives.
 pub mod archive;
+/// The published `checksums-<version>.txt`.
 pub mod checksums;
+/// Command line arguments.
 pub mod cli;
+/// The install, update, uninstall and which flows.
 pub mod commands;
+/// Placing, inspecting and removing the installed binary.
 pub mod install;
+/// HTTP downloads.
 pub mod net;
+/// Host detection and install locations.
 pub mod platform;
+/// Versions, repositories and download URLs.
 pub mod release;
+/// Console output.
 pub mod ui;
+/// Signature and checksum verification.
 pub mod verify;

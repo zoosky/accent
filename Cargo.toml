@@ -1,0 +1,53 @@
+[package]
+name = "accent"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Installer and updater for Accent CMS — downloads, verifies and installs signed Accent releases"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AccentCMS/accent"
+homepage = "https://accentcms.dev"
+documentation = "https://docs.rs/accent"
+readme = "README.md"
+keywords = ["cms", "installer", "updater", "accent"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = ["/.github"]
+
+# The installed product is itself called `accent`. Naming the installer
+# `accentup` keeps `cargo install accent` from dropping a binary into
+# ~/.cargo/bin that shadows the real one on PATH — the exact failure the
+# shadowing check in `install.sh` exists to catch.
+[[bin]]
+name = "accentup"
+path = "src/main.rs"
+
+[lib]
+name = "accent"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+dirs = "6.0"
+flate2 = "1.0"
+hex = "0.4"
+indicatif = "0.18"
+pgp = { version = "0.20", default-features = false }
+sha2 = "0.10"
+tar = "0.4"
+tempfile = "3.10"
+# No `gzip`: a transparently decompressed response body would not hash to the
+# published checksum. Downloads must be byte-exact.
+ureq = { version = "3.4", default-features = false, features = ["rustls"] }
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[target.'cfg(windows)'.dependencies]
+zip = { version = "8.0", default-features = false, features = ["deflate"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

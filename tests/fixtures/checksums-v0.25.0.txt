@@ -1,0 +1,6 @@
+98e505528fac8256353fd8cf27f4017dd3da3580424fed9f95d4d0e1e4b4b30d  accent-v0.25.0-aarch64-apple-darwin.tar.gz
+0b88021d08464ac996893132ce20c4aa0b2da5ed26caa5c3fb57b9a512379ae2  accent-v0.25.0-aarch64-pc-windows-msvc.zip
+cb4a909a0a1a1cd1b4636964cfc4954b308c232f0827e50c6ae99ef479ca7128  accent-v0.25.0-aarch64-unknown-linux-gnu.tar.gz
+6f302edc71d6258f56cf63a1a82a8251fcbc81b2fce959985d7371559b02b50c  accent-v0.25.0-x86_64-apple-darwin.tar.gz
+bb2521efd9e9f38bf59a52bc34c35578de3416e36876c4e23fd1c2dd7286d784  accent-v0.25.0-x86_64-pc-windows-msvc.zip
+5d11092029329776e71193e738549f05e8ebfa66bc0f8801558e25ccc5d70c79  accent-v0.25.0-x86_64-unknown-linux-gnu.tar.gz

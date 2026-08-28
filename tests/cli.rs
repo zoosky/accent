@@ -10,7 +10,6 @@
 //! cargo test -- --ignored
 //! ```
 
-use std::path::Path;
 use std::process::{Command, Output};
 
 /// Runs `accentup` with a clean environment, so that variables set in the
@@ -37,8 +36,14 @@ fn stderr(out: &Output) -> String {
 }
 
 /// Writes a stand-in for an installed `accent` that reports `version`.
+///
+/// Unix only, like the tests that use it: a shell script is the cheapest
+/// executable that answers `--version`, and on Windows the binary would need
+/// to be a real `.exe`. Everything it needs is imported here so that the
+/// Windows build, which compiles the file without this function, has no
+/// unused import to reject under `-D warnings`.
 #[cfg(unix)]
-fn fake_install(dir: &Path, version: &str) {
+fn fake_install(dir: &std::path::Path, version: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dir).unwrap();
     let path = dir.join("accent");

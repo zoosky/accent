@@ -4,7 +4,7 @@
 //! nesting is tolerated as well, so a repackaged mirror does not break the
 //! install.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
@@ -33,9 +33,17 @@ fn unpack_tar_gz(archive: &Path, out: &Path) -> Result<()> {
     for entry in tar.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.into_owned();
-        // An absolute path or a `..` component in a malformed archive would
-        // write outside the temporary directory.
-        if path.is_absolute() || path.components().any(|c| c.as_os_str() == "..") {
+        // A rooted path, a drive or UNC prefix, or a `..` component in a
+        // malformed archive would write outside the temporary directory.
+        // Matched on components rather than `is_absolute()`: on Windows
+        // `/tmp/x` is rooted but not absolute (no drive), and `C:x` has a
+        // prefix but no root, so either would slip past the simpler test.
+        if path.components().any(|c| {
+            matches!(
+                c,
+                Component::Prefix(_) | Component::RootDir | Component::ParentDir
+            )
+        }) {
             bail!("archive contains an unsafe path: {}", path.display());
         }
         entry
@@ -113,29 +121,33 @@ mod tests {
         path
     }
 
+    // The fixtures name the binary through `BIN_NAME`, which is `accent.exe`
+    // on Windows: an archive is only usable if it carries the host's name.
+
     #[test]
     fn finds_a_binary_at_the_archive_root() {
         let dir = tempfile::tempdir().unwrap();
         let archive = write(
             dir.path(),
             "accent.tar.gz",
-            &tar_gz(&[("accent", b"#!/bin/sh\n")]),
+            &tar_gz(&[(BIN_NAME, b"#!/bin/sh\n")]),
         );
         let binary = unpack(&archive, dir.path(), ArchiveKind::TarGz).unwrap();
-        assert_eq!(binary.file_name().unwrap(), "accent");
+        assert_eq!(binary.file_name().unwrap(), BIN_NAME);
         assert_eq!(std::fs::read(&binary).unwrap(), b"#!/bin/sh\n");
     }
 
     #[test]
     fn finds_a_binary_one_directory_down() {
         let dir = tempfile::tempdir().unwrap();
+        let nested = format!("accent-v0.25.0/{BIN_NAME}");
         let archive = write(
             dir.path(),
             "accent.tar.gz",
-            &tar_gz(&[("accent-v0.25.0/accent", b"binary")]),
+            &tar_gz(&[(&nested, b"binary")]),
         );
         let binary = unpack(&archive, dir.path(), ArchiveKind::TarGz).unwrap();
-        assert_eq!(binary.file_name().unwrap(), "accent");
+        assert_eq!(binary.file_name().unwrap(), BIN_NAME);
     }
 
     #[test]
@@ -151,6 +163,8 @@ mod tests {
         assert!(!dir.path().join("escaped").exists());
     }
 
+    /// A rooted entry is refused on every platform, including Windows, where
+    /// `/tmp/...` is rooted but not absolute.
     #[test]
     fn refuses_an_absolute_entry() {
         let dir = tempfile::tempdir().unwrap();
@@ -158,6 +172,22 @@ mod tests {
             dir.path(),
             "evil.tar.gz",
             &tar_gz(&[("/tmp/accent-escaped", b"pwned")]),
+        );
+        let err = unpack(&archive, dir.path(), ArchiveKind::TarGz).unwrap_err();
+        assert!(err.to_string().contains("unsafe path"), "{err}");
+    }
+
+    /// A drive-prefixed entry has a prefix but no root component, so it needs
+    /// its own check; only Windows parses the prefix, so only Windows can
+    /// test it.
+    #[cfg(windows)]
+    #[test]
+    fn refuses_a_drive_prefixed_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = write(
+            dir.path(),
+            "evil.tar.gz",
+            &tar_gz(&[("C:accent-escaped", b"pwned")]),
         );
         let err = unpack(&archive, dir.path(), ArchiveKind::TarGz).unwrap_err();
         assert!(err.to_string().contains("unsafe path"), "{err}");

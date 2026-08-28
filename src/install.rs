@@ -57,8 +57,9 @@ pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
     // Windows refuses to rename over a running executable, so move the old
     // one aside first; the rename below then lands on a free name.
     #[cfg(windows)]
+    let backup = dir.join(format!(".{BIN_NAME}.old"));
+    #[cfg(windows)]
     if target.exists() {
-        let backup = dir.join(format!(".{BIN_NAME}.old"));
         let _ = std::fs::remove_file(&backup);
         std::fs::rename(&target, &backup)
             .context("could not replace the running binary — close Accent CMS and retry")?;
@@ -68,6 +69,12 @@ pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
         let _ = std::fs::remove_file(&pending);
         format!("installing {}", target.display())
     })?;
+
+    // The old binary is only needed until the new one is in place. Removing
+    // it fails while that binary is still running, which Windows allows for
+    // a rename but not a delete; the next install clears it, above.
+    #[cfg(windows)]
+    let _ = std::fs::remove_file(&backup);
 
     Ok(target)
 }

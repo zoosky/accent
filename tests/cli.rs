@@ -46,7 +46,7 @@ fn stderr(out: &Output) -> String {
 fn fake_install(dir: &std::path::Path, version: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::create_dir_all(dir).unwrap();
-    let path = dir.join("accent");
+    let path = accent::install::binary_in(dir);
     std::fs::write(
         &path,
         format!("#!/bin/sh\necho 'accent {version} (abc1234)'\n"),
@@ -197,7 +197,7 @@ mod network {
         assert!(text.contains("Signature verified."), "{text}");
         assert!(text.contains("Checksum verified."), "{text}");
         assert!(text.contains("nothing written"), "{text}");
-        assert!(!dir.path().join("accent").exists());
+        assert!(!accent::install::binary_in(dir.path()).exists());
     }
 
     #[test]
@@ -207,8 +207,9 @@ mod network {
         let out = accentup(&["install", "--dir", dir.path().to_str().unwrap()]);
         assert!(out.status.success(), "{}", stderr(&out));
 
-        let binary = dir.path().join("accent");
-        assert!(binary.is_file());
+        // `accent.exe` on Windows: ask the crate rather than spell the name.
+        let binary = accent::install::binary_in(dir.path());
+        assert!(binary.is_file(), "{} was not installed", binary.display());
 
         let reported = Command::new(&binary).arg("--version").output().unwrap();
         assert!(reported.status.success());

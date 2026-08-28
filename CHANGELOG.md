@@ -47,6 +47,6 @@ First release.
   with the same semantics as the shell installers; an explicit flag always
   wins over its variable.
 
-[Unreleased]: https://github.com/zoosky/accent/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/zoosky/accent/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/zoosky/accent/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zoosky/accent/releases/tag/v0.1.0

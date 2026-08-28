@@ -2,5 +2,18 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "pgp 0.20 and its curve crates sit on the digest 0.10 line, so a lone sha2 0.11 would ship two RustCrypto stacks in an installer built at opt-level z. Lift this when pgp moves to digest 0.11.",
+      "matchPackageNames": [
+        "sha2"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    }
   ]
 }

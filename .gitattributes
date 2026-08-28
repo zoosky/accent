@@ -1,0 +1,6 @@
+# The signature in tests/fixtures covers the checksums file byte for byte,
+# and the key is parsed from its exact armour. A checkout that rewrites line
+# endings (core.autocrlf on Windows) would change those bytes and make the
+# real-signature test fail for a reason that has nothing to do with the code.
+tests/fixtures/** -text
+release-signing-key.asc -text

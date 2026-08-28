@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-28
+
+### Fixed
+
+- The archive unsafe-path guard used `is_absolute()`, which on Windows is
+  false for a rooted entry like `/tmp/x` (no drive) and a prefixed one like
+  `C:x` (no root). It now refuses any prefix, root, or `..` component on
+  every platform.
+- On Windows, updating in place left the previous binary behind as
+  `.accent.exe.old`. It is removed once the new binary is in place; if the
+  old one is still running, the next install clears it.
+- The test suite is Windows-correct: it no longer hardcodes `accent` where
+  the binary is `accent.exe`, and the signed fixtures are protected from
+  line-ending conversion on checkout. CI on `windows-latest` had been red
+  since the first release and now runs the live install there.
+
 ## [0.1.0] - 2026-08-26
 
 First release.
@@ -32,4 +48,5 @@ First release.
   wins over its variable.
 
 [Unreleased]: https://github.com/zoosky/accent/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/zoosky/accent/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zoosky/accent/releases/tag/v0.1.0

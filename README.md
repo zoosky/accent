@@ -127,7 +127,8 @@ cargo clippy --all-targets -- -D warnings
 
 The layout follows the install flow: `platform` (which asset), `release`
 (which version, and the URLs), `net` (fetch it), `checksums` and `verify`
-(is it genuine), `archive` (unpack it), `install` (place it, PATH warnings),
+(is it genuine), `archive` (unpack it), `install` (run it once, place it, PATH
+warnings),
 `commands` (the flow itself), `cli` and `main` (arguments).
 
 To test against a fork or a staging repository with the same asset layout,

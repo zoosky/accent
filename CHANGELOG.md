@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-29
+
 ### Fixed
 
 - The downloaded binary is run once (`accent --version`) before it is put in

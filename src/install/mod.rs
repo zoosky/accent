@@ -1,9 +1,21 @@
 //! Placing, inspecting and removing the installed binary.
+//!
+//! The last step of an install, split by concern: this file places,
+//! inspects and removes the binary; `verify_runs.rs` runs a downloaded
+//! binary once before it is put in place; `path.rs` warns about PATH and
+//! shadowing once it is. Everything is re-exported here, so callers see one
+//! `install` module.
+
+mod path;
+mod verify_runs;
+
+pub use path::{check_path, check_shadowing, on_path, resolve_on_path};
+pub use verify_runs::{highest_glibc_need, runs};
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
 use crate::platform::{self, BIN_NAME};
 use crate::release::Version;
@@ -33,13 +45,24 @@ pub fn installed_version(dir: &Path) -> Option<Version> {
     Version::parse(token).ok()
 }
 
-/// Moves the staged binary into place.
+/// Moves the staged binary into place, after `check` has passed it.
 ///
 /// Copies to a sibling temporary file inside the target directory first, then
 /// renames: on one filesystem that swap is atomic, so a half-written binary
 /// never appears on PATH, and an interrupted install leaves the previous
 /// version intact.
-pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
+///
+/// `check` runs against that temporary file before the rename, so it can
+/// execute the binary from the directory it will live in (a temporary
+/// directory may be mounted `noexec`; the install directory by definition is
+/// not). When it fails, the temporary file is removed, the previous version
+/// stays in place, and its error is returned unchanged with one line added
+/// saying so. The installer passes [`runs`]; tests pass whatever they need.
+pub fn place(
+    staged: &Path,
+    dir: &Path,
+    check: impl FnOnce(&Path) -> Result<()>,
+) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
 
     let target = binary_in(dir);
@@ -52,6 +75,14 @@ pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&pending, std::fs::Permissions::from_mode(0o755))
             .with_context(|| format!("making {} executable", pending.display()))?;
+    }
+
+    if let Err(err) = check(&pending) {
+        let _ = std::fs::remove_file(&pending);
+        return Err(anyhow!(
+            "{err}\nNothing was installed; any earlier version at {} is unchanged.",
+            target.display()
+        ));
     }
 
     // Windows refuses to rename over a running executable, so move the old
@@ -102,143 +133,20 @@ pub fn purge_data(ui: &Ui) -> Result<()> {
     Ok(())
 }
 
-/// Warns when the install directory is not on PATH, with the incantation for
-/// the user's shell.
-pub fn check_path(dir: &Path, ui: &Ui) {
-    if on_path(dir) {
-        return;
-    }
-
-    ui.blank();
-    ui.warn(format!("Note: {} is not on your PATH.", dir.display()));
-
-    if cfg!(windows) {
-        ui.warn("To add it, run:");
-        ui.warn("");
-        ui.warn("  $path = [Environment]::GetEnvironmentVariable('Path', 'User')");
-        ui.warn(format!(
-            "  [Environment]::SetEnvironmentVariable('Path', \"$path;{}\", 'User')",
-            dir.display()
-        ));
-        ui.warn("");
-        ui.warn("Then restart your terminal.");
-        return;
-    }
-
-    let shell = std::env::var("SHELL").unwrap_or_default();
-    let dir = dir.display();
-    if shell.ends_with("fish") {
-        ui.warn("Add it by appending this to ~/.config/fish/config.fish:");
-        ui.warn(format!("  fish_add_path {dir}"));
-    } else {
-        let profile = if shell.ends_with("zsh") {
-            "~/.zshrc"
-        } else {
-            "~/.bashrc"
-        };
-        ui.warn(format!("Add it by appending this to {profile}:"));
-        ui.warn(format!("  export PATH=\"{dir}:$PATH\""));
-    }
-    ui.warn("Then restart your shell.");
-}
-
-/// Warns when `accent` resolves to a different binary than the one just
-/// installed.
-///
-/// The shell resolves `accent` by PATH order, not by what this installer
-/// wrote. A stale copy earlier in PATH — a `cargo install`ed one in
-/// `~/.cargo/bin` is the usual case — silently wins, and `accent --version`
-/// keeps reporting the old build while the user believes they upgraded.
-pub fn check_shadowing(dir: &Path, ui: &Ui) {
-    let installed = binary_in(dir);
-    let Some(resolved) = resolve_on_path(BIN_NAME) else {
-        return;
-    };
-    if same_file(&resolved, &installed) {
-        return;
-    }
-
-    let version = Command::new(&resolved)
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|out| out.status.success())
-        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
-        .filter(|text| !text.is_empty())
-        .unwrap_or_else(|| "unknown version".to_string());
-
-    ui.blank();
-    ui.warn("Warning: 'accent' currently resolves to a different binary:");
-    ui.warn(format!("  {} ({version})", resolved.display()));
-    ui.warn(format!(
-        "which shadows the up-to-date binary at {}.",
-        installed.display()
-    ));
-    if cfg!(windows) {
-        ui.warn(format!(
-            "Remove the shadowing binary or move {} earlier in your PATH,",
-            dir.display()
-        ));
-        ui.warn("then start a new terminal.");
-    } else {
-        ui.warn(format!(
-            "Remove the shadowing binary or move {} earlier in your PATH,",
-            dir.display()
-        ));
-        ui.warn("then run 'hash -r' (bash/zsh) or restart your shell.");
-    }
-}
-
-/// Whether `dir` is one of the entries in `PATH`.
-pub fn on_path(dir: &Path) -> bool {
-    std::env::var_os("PATH")
-        .map(|path| std::env::split_paths(&path).any(|entry| entry == dir))
-        .unwrap_or(false)
-}
-
-/// First `name` on PATH, the way the shell would pick it.
-pub fn resolve_on_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(name))
-        .find(|candidate| is_executable(candidate))
-}
-
-fn is_executable(path: &Path) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(path)
-            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
-    }
-    #[cfg(not(unix))]
-    {
-        path.is_file()
-    }
-}
-
-/// Compares two paths after resolving symlinks, so `~/.local/bin/accent` and a
-/// symlink pointing at it are not reported as shadowing each other.
-fn same_file(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => a == b,
-    }
+/// A stand-in executable for tests: a shell script with `body`, made
+/// executable, at `dir/name`. Unix only, like every test that runs one.
+#[cfg(all(test, unix))]
+pub(crate) fn stub(dir: &Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join(name);
+    std::fs::write(&path, body).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[cfg(unix)]
-    fn stub(dir: &Path, name: &str, body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-        let path = dir.join(name);
-        std::fs::write(&path, body).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        path
-    }
 
     #[test]
     fn places_a_binary_and_replaces_it_in_place() {
@@ -248,11 +156,11 @@ mod tests {
 
         let first = staging.path().join("accent");
         std::fs::write(&first, b"version one").unwrap();
-        let installed = place(&first, &dir).unwrap();
+        let installed = place(&first, &dir, |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&installed).unwrap(), b"version one");
 
         std::fs::write(&first, b"version two").unwrap();
-        place(&first, &dir).unwrap();
+        place(&first, &dir, |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&installed).unwrap(), b"version two");
 
         // No temporary file left behind by either install.
@@ -274,9 +182,51 @@ mod tests {
         std::fs::write(&staged, b"#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-        let installed = place(&staged, target.path()).unwrap();
+        let installed = place(&staged, target.path(), |_| Ok(())).unwrap();
         let mode = std::fs::metadata(&installed).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn a_failed_check_installs_nothing_and_keeps_the_old_binary() {
+        let staging = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let installed = binary_in(target.path());
+        std::fs::write(&installed, b"old and working").unwrap();
+
+        let staged = staging.path().join("accent");
+        std::fs::write(&staged, b"new and broken").unwrap();
+        let mut checked = None;
+        let err = place(&staged, target.path(), |pending| {
+            checked = Some(pending.to_path_buf());
+            assert_eq!(std::fs::read(pending).unwrap(), b"new and broken");
+            Err(anyhow!("cannot run: GLIBC_2.39 not found"))
+        })
+        .unwrap_err();
+
+        // The check saw the copy inside the install directory, not the
+        // staging file, and the copy is gone afterwards.
+        assert_eq!(checked.unwrap().parent().unwrap(), target.path());
+        let leftovers: Vec<_> = std::fs::read_dir(target.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|name| name != BIN_NAME)
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+
+        assert_eq!(std::fs::read(&installed).unwrap(), b"old and working");
+        let text = err.to_string();
+        assert!(
+            text.starts_with("cannot run: GLIBC_2.39 not found"),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "Nothing was installed; any earlier version at {} is unchanged.",
+                installed.display()
+            )),
+            "{text}"
+        );
     }
 
     #[test]

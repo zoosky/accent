@@ -249,7 +249,16 @@ fn fetch_and_place(
 
     ui.say("Extracting...");
     let staged = archive::unpack(&archive_path, workdir.path(), platform.archive)?;
-    let installed = install::place(&staged, &session.dir)?;
+
+    // Run it once before it goes on PATH. A verified download can still be a
+    // binary this machine cannot start; that is a failed install, not a
+    // successful one with a broken result.
+    let report_url = format!("https://github.com/{}/discussions", session.repo.slug());
+    let installed = install::place(&staged, &session.dir, |pending| {
+        let version_line = install::runs(pending, &report_url)?;
+        ui.say(format!("Verified: {version_line}"));
+        Ok(())
+    })?;
     ui.say(format!("Installed accent to {}", installed.display()));
 
     install::check_path(&session.dir, ui);

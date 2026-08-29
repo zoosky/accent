@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The downloaded binary is run once (`accent --version`) before it is put in
+  place. A release that verifies but cannot start on this system -- the
+  v0.25.0 Linux binaries needed glibc 2.39 and the loader refused them on
+  Debian 12 and Ubuntu 22.04 -- used to install under "Installation
+  complete!"; it now fails with the loader's message, the glibc the release
+  needs and the one the system has, and leaves any earlier installation
+  untouched. The README states the Linux floor (glibc 2.28).
+
 ## [0.1.1] - 2026-08-28
 
 ### Fixed

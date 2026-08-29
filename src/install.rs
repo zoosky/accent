@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
 use crate::platform::{self, BIN_NAME};
 use crate::release::Version;
@@ -33,13 +33,24 @@ pub fn installed_version(dir: &Path) -> Option<Version> {
     Version::parse(token).ok()
 }
 
-/// Moves the staged binary into place.
+/// Moves the staged binary into place, after `check` has passed it.
 ///
 /// Copies to a sibling temporary file inside the target directory first, then
 /// renames: on one filesystem that swap is atomic, so a half-written binary
 /// never appears on PATH, and an interrupted install leaves the previous
 /// version intact.
-pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
+///
+/// `check` runs against that temporary file before the rename, so it can
+/// execute the binary from the directory it will live in (a temporary
+/// directory may be mounted `noexec`; the install directory by definition is
+/// not). When it fails, the temporary file is removed, the previous version
+/// stays in place, and its error is returned unchanged with one line added
+/// saying so. The installer passes [`runs`]; tests pass whatever they need.
+pub fn place(
+    staged: &Path,
+    dir: &Path,
+    check: impl FnOnce(&Path) -> Result<()>,
+) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
 
     let target = binary_in(dir);
@@ -52,6 +63,14 @@ pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&pending, std::fs::Permissions::from_mode(0o755))
             .with_context(|| format!("making {} executable", pending.display()))?;
+    }
+
+    if let Err(err) = check(&pending) {
+        let _ = std::fs::remove_file(&pending);
+        return Err(anyhow!(
+            "{err}\nNothing was installed; any earlier version at {} is unchanged.",
+            target.display()
+        ));
     }
 
     // Windows refuses to rename over a running executable, so move the old
@@ -77,6 +96,113 @@ pub fn place(staged: &Path, dir: &Path) -> Result<PathBuf> {
     let _ = std::fs::remove_file(&backup);
 
     Ok(target)
+}
+
+/// Runs a downloaded binary once, before it is installed.
+///
+/// Everything before this point proves the archive is the one that was
+/// published; nothing proves this machine can start what is inside it. A
+/// Linux release built against a newer glibc than the system has is the
+/// case that made this necessary: the v0.25.0 binaries needed glibc 2.39 and
+/// the dynamic loader refused them on Debian 12 and Ubuntu 22.04, while the
+/// installers reported success over them. So `accent --version` is run on
+/// the staged file. Success returns the line it printed; failure returns an
+/// error that quotes the loader and, when the loader named a `GLIBC_x.y` the
+/// system lacks, says which glibc the release needs and which one the
+/// system has, so the user can tell an unsupported system from a broken
+/// release. `report_url` is where the latter should go.
+pub fn runs(binary: &Path, report_url: &str) -> Result<String> {
+    let output = match Command::new(binary).arg("--version").output() {
+        Ok(output) => output,
+        Err(err) => {
+            let mut msg = format!(
+                "the downloaded binary cannot run on this system:\n  {}: {err}",
+                binary.display()
+            );
+            // The loader itself is what is missing when exec fails with "not
+            // found" on a file that exists: the ELF interpreter the binary
+            // names (`/lib64/ld-linux-x86-64.so.2`) is glibc's, and a musl
+            // system does not have it.
+            if cfg!(target_os = "linux")
+                && err.kind() == std::io::ErrorKind::NotFound
+                && binary.exists()
+            {
+                msg.push_str(
+                    "\nThe Linux binaries are built against glibc. Systems without it (Alpine and \
+                     other musl-based distributions) are not supported; build Accent CMS from source.",
+                );
+            }
+            return Err(anyhow!(msg));
+        }
+    };
+
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut msg = String::from("the downloaded binary cannot run on this system:");
+    for line in stderr.lines().filter(|line| !line.trim().is_empty()) {
+        msg.push_str("\n  ");
+        msg.push_str(line);
+    }
+    if stderr.trim().is_empty() {
+        msg.push_str(&format!(
+            "\n  {} --version: {}",
+            binary.display(),
+            output.status
+        ));
+    }
+
+    if let Some((major, minor)) = highest_glibc_need(&stderr) {
+        let have = system_glibc().unwrap_or_else(|| "unknown".to_string());
+        msg.push_str(&format!(
+            "\nThis release needs glibc {major}.{minor} or newer; this system has glibc {have}.\n\
+             The supported Linux versions are listed at https://accentcms.dev/download.\n\
+             If this system is one of them, the release is at fault: please report it via {report_url}"
+        ));
+    }
+    Err(anyhow!(msg))
+}
+
+/// The newest `GLIBC_x.y` a dynamic-loader complaint names, as `(x, y)`.
+///
+/// The loader prints one `version \`GLIBC_2.39' not found` line per missing
+/// symbol version; the highest of them is the floor the binary really has.
+/// `GLIBC_PRIVATE` and other non-numeric tags are ignored.
+pub fn highest_glibc_need(loader_stderr: &str) -> Option<(u32, u32)> {
+    loader_stderr
+        .match_indices("GLIBC_")
+        .filter_map(|(at, _)| {
+            let rest = &loader_stderr[at + "GLIBC_".len()..];
+            let version: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            let (major, minor) = version.split_once('.')?;
+            let minor = minor.split('.').next()?;
+            Some((major.parse().ok()?, minor.parse().ok()?))
+        })
+        .max()
+}
+
+/// The glibc this system runs, as `getconf` reports it (`2.36`), when it is
+/// a glibc system at all.
+fn system_glibc() -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let output = Command::new("getconf")
+            .arg("GNU_LIBC_VERSION")
+            .output()
+            .ok()
+            .filter(|out| out.status.success())?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        text.split_whitespace().nth(1).map(str::to_string)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        None
+    }
 }
 
 /// Removes the installed binary. Returns whether there was one to remove.
@@ -248,11 +374,11 @@ mod tests {
 
         let first = staging.path().join("accent");
         std::fs::write(&first, b"version one").unwrap();
-        let installed = place(&first, &dir).unwrap();
+        let installed = place(&first, &dir, |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&installed).unwrap(), b"version one");
 
         std::fs::write(&first, b"version two").unwrap();
-        place(&first, &dir).unwrap();
+        place(&first, &dir, |_| Ok(())).unwrap();
         assert_eq!(std::fs::read(&installed).unwrap(), b"version two");
 
         // No temporary file left behind by either install.
@@ -274,9 +400,141 @@ mod tests {
         std::fs::write(&staged, b"#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600)).unwrap();
 
-        let installed = place(&staged, target.path()).unwrap();
+        let installed = place(&staged, target.path(), |_| Ok(())).unwrap();
         let mode = std::fs::metadata(&installed).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o755);
+    }
+
+    #[test]
+    fn a_failed_check_installs_nothing_and_keeps_the_old_binary() {
+        let staging = tempfile::tempdir().unwrap();
+        let target = tempfile::tempdir().unwrap();
+        let installed = binary_in(target.path());
+        std::fs::write(&installed, b"old and working").unwrap();
+
+        let staged = staging.path().join("accent");
+        std::fs::write(&staged, b"new and broken").unwrap();
+        let mut checked = None;
+        let err = place(&staged, target.path(), |pending| {
+            checked = Some(pending.to_path_buf());
+            assert_eq!(std::fs::read(pending).unwrap(), b"new and broken");
+            Err(anyhow!("cannot run: GLIBC_2.39 not found"))
+        })
+        .unwrap_err();
+
+        // The check saw the copy inside the install directory, not the
+        // staging file, and the copy is gone afterwards.
+        assert_eq!(checked.unwrap().parent().unwrap(), target.path());
+        let leftovers: Vec<_> = std::fs::read_dir(target.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|name| name != BIN_NAME)
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+
+        assert_eq!(std::fs::read(&installed).unwrap(), b"old and working");
+        let text = err.to_string();
+        assert!(
+            text.starts_with("cannot run: GLIBC_2.39 not found"),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "Nothing was installed; any earlier version at {} is unchanged.",
+                installed.display()
+            )),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn the_highest_glibc_the_loader_names_is_the_floor() {
+        let stderr = "accent: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found (required by accent)\n\
+                      accent: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.39' not found (required by accent)\n\
+                      accent: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.4' not found (required by accent)\n";
+        assert_eq!(highest_glibc_need(stderr), Some((2, 39)));
+        assert_eq!(
+            highest_glibc_need("version `GLIBC_PRIVATE' not found"),
+            None
+        );
+        assert_eq!(highest_glibc_need("Segmentation fault"), None);
+        assert_eq!(highest_glibc_need(""), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_binary_that_runs_reports_its_version_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = stub(
+            dir.path(),
+            "ok",
+            "#!/bin/sh\necho 'accent 0.26.0 (abc1234)'\n",
+        );
+        assert_eq!(
+            runs(&bin, "https://example.invalid").unwrap(),
+            "accent 0.26.0 (abc1234)"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_loader_refusal_names_the_glibc_the_release_needs() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = stub(
+            dir.path(),
+            "refused",
+            "#!/bin/sh\n\
+             echo \"$0: /lib/x86_64-linux-gnu/libc.so.6: version \\`GLIBC_2.38' not found (required by $0)\" >&2\n\
+             echo \"$0: /lib/x86_64-linux-gnu/libc.so.6: version \\`GLIBC_2.39' not found (required by $0)\" >&2\n\
+             exit 127\n",
+        );
+        let text = runs(&bin, "https://example.invalid/discussions")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            text.starts_with("the downloaded binary cannot run on this system:"),
+            "{text}"
+        );
+        assert!(text.contains("GLIBC_2.39' not found"), "{text}");
+        assert!(
+            text.contains("This release needs glibc 2.39 or newer; this system has glibc "),
+            "{text}"
+        );
+        assert!(text.contains("https://accentcms.dev/download"), "{text}");
+        assert!(
+            text.contains("report it via https://example.invalid/discussions"),
+            "{text}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failure_without_glibc_in_it_is_quoted_without_a_diagnosis() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = stub(
+            dir.path(),
+            "crash",
+            "#!/bin/sh\necho 'Illegal instruction' >&2\nexit 132\n",
+        );
+        let text = runs(&bin, "https://example.invalid")
+            .unwrap_err()
+            .to_string();
+        assert!(text.contains("  Illegal instruction"), "{text}");
+        assert!(!text.contains("needs glibc"), "{text}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_cannot_be_executed_at_all_is_an_error_not_a_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("missing");
+        let text = runs(&bin, "https://example.invalid")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            text.starts_with("the downloaded binary cannot run on this system:"),
+            "{text}"
+        );
     }
 
     #[test]

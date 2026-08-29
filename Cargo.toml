@@ -1,6 +1,6 @@
 [package]
 name = "accent"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 # Floor set by the `pgp` (and, on Windows, `zip`) dependencies.
 rust-version = "1.88"

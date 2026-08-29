@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-29
+
 ### Added
 
 - Alpine Linux support. On a musl-based system `accentup` installs the fully

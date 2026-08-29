@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 
 use crate::net::Http;
-use crate::platform::{self, Platform};
-use crate::release::{self, Repo, Version, OLDEST_PUBLISHED};
+use crate::platform::{self, Libc, Platform};
+use crate::release::{self, Repo, Version, OLDEST_MUSL, OLDEST_PUBLISHED};
 use crate::ui::Ui;
 use crate::{archive, checksums, install, verify};
 
@@ -229,9 +229,17 @@ fn fetch_and_place(
             ui,
         )
         .with_context(|| {
+            // A musl host asking for a release older than the first musl
+            // archive is the likely reason for a 404 here; say so, since
+            // "not published" would send the user looking at the wrong list.
+            let musl_note = if platform.libc == Some(Libc::Musl) {
+                format!("; the musl (Alpine) archives exist from {OLDEST_MUSL} onward, earlier releases are glibc-only")
+            } else {
+                String::new()
+            };
             format!(
                 "downloading {asset} ({version} may not be published — see {}, which carries \
-                 {OLDEST_PUBLISHED} and later)",
+                 {OLDEST_PUBLISHED} and later{musl_note})",
                 session.repo.releases_page()
             )
         })?;

@@ -13,6 +13,10 @@ pub const DEFAULT_REPO: &str = "AccentCMS/accent";
 /// private build repository but have no downloadable assets here.
 pub const OLDEST_PUBLISHED: &str = "v0.22.0";
 
+/// First release that ships the fully static Linux musl archives
+/// (`*-unknown-linux-musl`). Earlier releases are glibc-only on Linux.
+pub const OLDEST_MUSL: &str = "v0.26.0";
+
 /// A release version, stored without its `v`.
 ///
 /// Tags always carry the prefix, users type it either way, and

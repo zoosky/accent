@@ -35,15 +35,20 @@ pub fn runs(binary: &Path, report_url: &str) -> Result<String> {
             // The loader itself is what is missing when exec fails with "not
             // found" on a file that exists: the ELF interpreter the binary
             // names (`/lib64/ld-linux-x86-64.so.2`) is glibc's, and a musl
-            // system does not have it.
+            // system does not have it. Reaching this means the glibc build
+            // was chosen on a musl host, which libc detection should have
+            // prevented -- so it is a report, not a shrug.
             if cfg!(target_os = "linux")
                 && err.kind() == std::io::ErrorKind::NotFound
                 && binary.exists()
             {
-                msg.push_str(
-                    "\nThe Linux binaries are built against glibc. Systems without it (Alpine and \
-                     other musl-based distributions) are not supported; build Accent CMS from source.",
-                );
+                msg.push_str(&format!(
+                    "\nThe binary asks for the glibc loader, which this system does not have \
+                     (Alpine or another musl-based distribution). accentup selects the fully static \
+                     musl build on such systems from {} onward; if this is one and you still got \
+                     here, please report it via {report_url}",
+                    crate::release::OLDEST_MUSL
+                ));
             }
             return Err(anyhow!(msg));
         }

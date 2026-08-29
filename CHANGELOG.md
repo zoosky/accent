@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Alpine Linux support. On a musl-based system `accentup` installs the fully
+  static `*-unknown-linux-musl` build (published from Accent CMS v0.26.0
+  onward) instead of the glibc build that cannot start there; glibc systems
+  keep the gnu build. Detection probes the musl loader at
+  `/lib/ld-musl-<arch>.so.1`, then `ldd`, and defaults to glibc. A failed
+  musl download names the first release that ships one.
+
 ## [0.1.2] - 2026-08-29
 
 ### Fixed

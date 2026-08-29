@@ -107,10 +107,13 @@ sha256sum -c --ignore-missing checksums-v0.25.0.txt
 
 ## Supported targets
 
-`x86_64` and `aarch64`, on Linux (gnu), macOS and Windows (msvc). There is no
-musl build; on a musl host, build Accent CMS from source.
+`x86_64` and `aarch64`, on Linux (glibc, and musl from Accent CMS v0.26.0),
+macOS and Windows (msvc). On Linux `accentup` detects the system's libc --
+the musl loader at `/lib/ld-musl-<arch>.so.1`, then `ldd` -- and installs the
+matching build: the fully static musl build on Alpine and other musl-based
+distributions, the glibc build everywhere else.
 
-The Linux binaries need glibc 2.28 or newer -- Debian 10, Ubuntu 20.04,
+The Linux glibc binaries need glibc 2.28 or newer -- Debian 10, Ubuntu 20.04,
 RHEL 8 (and AlmaLinux and Rocky Linux 8), Amazon Linux 2023, and anything
 after them. `accentup` runs the downloaded binary once (`accent --version`)
 before putting it in place; a binary this system cannot start is not

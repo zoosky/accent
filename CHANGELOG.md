@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-05
+
+### Security
+
+- Update `zip` from 8.6.0 to 9.4.0. This clears four RustSec advisories
+  against the Windows extraction path, among them RUSTSEC-2026-0369
+  (critical): `ZipArchive::extract` applied Unix permissions through
+  symlinks without confinement of the target. The other three are
+  RUSTSEC-2026-0367, RUSTSEC-2026-0368 and RUSTSEC-2026-0429.
+- Update `rustls` to 0.23.46, `rustls-webpki` to 0.103.16 and
+  `webpki-roots` to 1.0.11 in the lockfile. This clears
+  RUSTSEC-2026-0285, RUSTSEC-2026-0346, RUSTSEC-2026-0348,
+  RUSTSEC-2026-0349, RUSTSEC-2026-0381 and RUSTSEC-2026-0382.
+- Add `.cargo/audit.toml`. It documents two accepted advisories in the
+  `pgp` tree (RUSTSEC-2023-0071, RUSTSEC-2026-0387). Both are timing
+  side channels in private-key operations. The installer only verifies
+  signatures with a public key, so no secret is exposed. No `pgp`
+  release removes the two crates yet.
+
 ## [0.1.3] - 2026-08-29
 
 ### Added

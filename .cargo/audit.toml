@@ -1,0 +1,20 @@
+# cargo-audit configuration for the installer.
+#
+# Last review: 2026-11-05. Both ignores are timing side channels in the
+# `pgp` dependency tree. The installer uses `pgp` only to verify the
+# release signature with the embedded public key (src/verify.rs). It
+# holds no private key, so a timing oracle exposes no secret. No pgp
+# release removes the two crates: pgp 0.21.0 still requires rsa ^0.9.10
+# and elliptic-curve ^0.13 (crypto-bigint 0.5). Re-check both ignores
+# when pgp moves to the RustCrypto 0.14 stack.
+
+[advisories]
+ignore = [
+  # rsa 0.9: Marvin attack, a timing side channel in private-key
+  # operations. No fixed release exists. Verification-only use.
+  "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5: operations that are not constant-time. The fix
+  # (>=0.7.6) is semver-incompatible and blocked on the pgp dependency
+  # tree. Verification-only use.
+  "RUSTSEC-2026-0387",
+]

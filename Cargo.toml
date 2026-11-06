@@ -45,7 +45,7 @@ ureq = { version = "3.4", default-features = false, features = ["rustls"] }
 tempfile = "3.10"
 
 [target.'cfg(windows)'.dependencies]
-zip = { version = "8.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0", default-features = false, features = ["deflate"] }
 
 [profile.release]
 opt-level = "z"

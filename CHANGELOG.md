@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/release.sh`: tag and publish a release after the release PR
+  is merged. It verifies the branch, the tree, the version, the
+  changelog entry and the tag. It packages the crate with a dry run,
+  and only then tags, pushes and publishes.
+
 ## [0.1.4] - 2026-11-05
 
 ### Security
